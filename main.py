@@ -15,15 +15,15 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 0',
-    'options': '-vn -ac 2 -ar 48000 -b:a 64k'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'options': '-vn'
 }
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'auto',
+    'default_search': 'scsearch',  # SoundCloud search bypasses YouTube bot detection
     'extract_flat': False,
     'nocheckcertificate': True,
     'ignoreerrors': False,
@@ -60,12 +60,12 @@ async def on_message(message):
         if guild and guild.voice_client:
             vc = guild.voice_client
             try:
-                # Generate Google TTS audio
+                # Generate Google TTS audio file
                 tts = gTTS(text=message.content, lang='hi')
                 audio_file = "chat_tts.mp3"
                 tts.save(audio_file)
 
-                # Stop any playing song/audio immediately before speaking TTS
+                # Stop any playing music immediately before speaking TTS
                 if vc.is_playing() or vc.is_paused():
                     vc.stop()
 
@@ -90,7 +90,7 @@ async def join_vc(interaction: discord.Interaction):
         await channel.connect(reconnect=True, timeout=30.0)
     await interaction.response.send_message(f"🔊 Joined **{channel.name}**!")
 
-@bot.tree.command(name="play", description="Play music from YouTube link or search query")
+@bot.tree.command(name="play", description="Play music by name (SoundCloud powered)")
 async def play_music(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ Pehle kisi Voice Channel me join karein!", ephemeral=True)
@@ -104,14 +104,13 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        # Handle direct URLs vs search queries properly
-        query = search if search.startswith("http://") or search.startswith("https://") else f"ytsearch:{search}"
+        # Use SoundCloud search to avoid YouTube bot verification blocks
+        query = search if search.startswith("http://") or search.startswith("https://") else f"scsearch:{search}"
         
         loop = asyncio.get_event_loop()
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
         
-        if 'entries' in data:
-            # take first item from playlist or search result
+        if 'entries' in data and len(data['entries']) > 0:
             info = data['entries'][0]
         else:
             info = data
@@ -126,7 +125,7 @@ async def play_music(interaction: discord.Interaction, search: str):
         vc.play(source)
         await interaction.followup.send(f"🎵 **Now Playing:** {title} 🤤❤️")
     except Exception as e:
-        await interaction.followup.send(f"❌ Play error: `{e}` (Link ya query check karein)")
+        await interaction.followup.send(f"❌ Play error: `{e}`")
 
 @bot.tree.command(name="pause", description="Pause the currently playing music")
 async def pause_music(interaction: discord.Interaction):
@@ -193,7 +192,7 @@ async def tts_start(interaction: discord.Interaction):
         await vc.move_to(interaction.user.voice.channel)
 
     active_tts_channels.add(interaction.channel.id)
-    await interaction.response.send_message("🟢 **Live TTS Mode Activated!** Ab aap is channel mein jo bhi likhenge, Priya usko voice mein bolegi (Song chal raha hoga toh woh apne aap ruk jayega).")
+    await interaction.response.send_message("🟢 **Live TTS Mode Activated!** Ab aap is channel mein jo bhi likhenge, Priya usko voice mein bolegi.")
 
 @bot.tree.command(name="tts_stop", description="Live TTS mode ko is channel mein band karein")
 async def tts_stop(interaction: discord.Interaction):
@@ -302,7 +301,7 @@ async def clear_messages(interaction: discord.Interaction, amount: int = 40):
 @bot.tree.command(name="help", description="Show all available slash commands")
 async def custom_help(interaction: discord.Interaction):
     embed = discord.Embed(title="⚡ Priya & AuraBot Command Manual", color=discord.Color.from_rgb(255, 0, 127))
-    embed.add_field(name="🗣️ Live Chat TTS", value="`/tts_start` (Enable chat reading), `/tts_stop` (Disable)", inline=False)
+    embed.add_field(name="🗣️ Live Chat TTS", value="`/tts_start`, `/tts_stop`", inline=False)
     embed.add_field(name="💖 Romance & Dashboard", value="`/dashboard`, `/kiss`, `/hug`, `/love`, `/my_bf_1`, `/my_bf_2`", inline=False)
     embed.add_field(name="🎵 Music & VC", value="`/play`, `/join`, `/pause`, `/resume`, `/skip`, `/stop`, `/leave`, `/vc247`", inline=False)
     embed.add_field(name="💰 Economy", value="`/daily`, `/balance`", inline=False)
