@@ -23,7 +23,7 @@ YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch',
+    'default_search': 'auto',
     'extract_flat': False,
     'nocheckcertificate': True,
     'ignoreerrors': False,
@@ -34,7 +34,7 @@ YTDL_OPTIONS = {
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 user_balances = {}
 
-# Dictionary to track active TTS channels for users/servers
+# Active TTS channels tracker
 active_tts_channels = set()
 
 @bot.event
@@ -51,21 +51,22 @@ async def on_ready():
 # ==================== LIVE CHAT TTS LISTENER ====================
 @bot.event
 async def on_message(message):
-    # Ignore bot messages
     if message.author.bot:
         return
 
-    # Check if TTS is active in this channel and text doesn't start with prefix/slash
+    # Check if TTS is active in this channel and it's not a command
     if message.channel.id in active_tts_channels and not message.content.startswith("/"):
         guild = message.guild
         if guild and guild.voice_client:
             vc = guild.voice_client
             try:
+                # Generate Google TTS audio
                 tts = gTTS(text=message.content, lang='hi')
                 audio_file = "chat_tts.mp3"
                 tts.save(audio_file)
 
-                if vc.is_playing():
+                # Stop any playing song/audio immediately before speaking TTS
+                if vc.is_playing() or vc.is_paused():
                     vc.stop()
 
                 source = discord.FFmpegPCMAudio(audio_file)
@@ -89,7 +90,7 @@ async def join_vc(interaction: discord.Interaction):
         await channel.connect(reconnect=True, timeout=30.0)
     await interaction.response.send_message(f"🔊 Joined **{channel.name}**!")
 
-@bot.tree.command(name="play", description="Play music from YouTube or SoundCloud")
+@bot.tree.command(name="play", description="Play music from YouTube link or search query")
 async def play_music(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ Pehle kisi Voice Channel me join karein!", ephemeral=True)
@@ -103,22 +104,29 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        query = search if (search.startswith("http://") or search.startswith("https://")) else f"scsearch:{search}"
-        info = ytdl.extract_info(query, download=False)
-        if 'entries' in info and len(info['entries']) > 0:
-            info = info['entries'][0]
+        # Handle direct URLs vs search queries properly
+        query = search if search.startswith("http://") or search.startswith("https://") else f"ytsearch:{search}"
+        
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+        
+        if 'entries' in data:
+            # take first item from playlist or search result
+            info = data['entries'][0]
+        else:
+            info = data
 
-        url = info['url']
+        url = info.get('url')
         title = info.get('title', 'Audio Stream')
 
-        if vc.is_playing():
+        if vc.is_playing() or vc.is_paused():
             vc.stop()
 
         source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
         vc.play(source)
         await interaction.followup.send(f"🎵 **Now Playing:** {title} 🤤❤️")
     except Exception as e:
-        await interaction.followup.send(f"❌ Play error: `{e}`")
+        await interaction.followup.send(f"❌ Play error: `{e}` (Link ya query check karein)")
 
 @bot.tree.command(name="pause", description="Pause the currently playing music")
 async def pause_music(interaction: discord.Interaction):
@@ -156,7 +164,6 @@ async def stop_music(interaction: discord.Interaction):
 async def leave_vc(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
-        # Auto remove active TTS if leaving
         if interaction.channel.id in active_tts_channels:
             active_tts_channels.remove(interaction.channel.id)
         await interaction.response.send_message("👋 Disconnected from Voice Channel.")
@@ -186,13 +193,13 @@ async def tts_start(interaction: discord.Interaction):
         await vc.move_to(interaction.user.voice.channel)
 
     active_tts_channels.add(interaction.channel.id)
-    await interaction.response.send_message("🟢 **Live TTS Mode Activated!** Ab aap is channel mein jo bhi likhenge, Priya usko voice mein bolegi. (/tts_stop se band karein)")
+    await interaction.response.send_message("🟢 **Live TTS Mode Activated!** Ab aap is channel mein jo bhi likhenge, Priya usko voice mein bolegi (Song chal raha hoga toh woh apne aap ruk jayega).")
 
 @bot.tree.command(name="tts_stop", description="Live TTS mode ko is channel mein band karein")
 async def tts_stop(interaction: discord.Interaction):
     if interaction.channel.id in active_tts_channels:
         active_tts_channels.remove(interaction.channel.id)
-        await interaction.response.send_message("🔴 **Live TTS Mode Deactivated!** Ab chat messages voice mein nahi bole jayenge.")
+        await interaction.response.send_message("🔴 **Live TTS Mode Deactivated!**")
     else:
         await interaction.response.send_message("❌ Is channel mein live TTS active nahi hai!", ephemeral=True)
 
