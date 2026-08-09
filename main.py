@@ -34,6 +34,9 @@ YTDL_OPTIONS = {
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 user_balances = {}
 
+# Dictionary to track active TTS channels for users/servers
+active_tts_channels = set()
+
 @bot.event
 async def on_ready():
     print(f"Logged in successfully as {bot.user.name} ({bot.user.id})")
@@ -43,6 +46,35 @@ async def on_ready():
     except Exception as e:
         print(f"Sync error: {e}")
     await bot.change_presence(activity=discord.Game(name="/help | Priya & Forest Vibes 🍄✨"))
+
+
+# ==================== LIVE CHAT TTS LISTENER ====================
+@bot.event
+async def on_message(message):
+    # Ignore bot messages
+    if message.author.bot:
+        return
+
+    # Check if TTS is active in this channel and text doesn't start with prefix/slash
+    if message.channel.id in active_tts_channels and not message.content.startswith("/"):
+        guild = message.guild
+        if guild and guild.voice_client:
+            vc = guild.voice_client
+            try:
+                tts = gTTS(text=message.content, lang='hi')
+                audio_file = "chat_tts.mp3"
+                tts.save(audio_file)
+
+                if vc.is_playing():
+                    vc.stop()
+
+                source = discord.FFmpegPCMAudio(audio_file)
+                vc.play(source)
+            except Exception as e:
+                print(f"Live TTS Error: {e}")
+
+    await bot.process_commands(message)
+
 
 # ==================== 2. SLASH COMMANDS (MUSIC & VC) ====================
 
@@ -124,6 +156,9 @@ async def stop_music(interaction: discord.Interaction):
 async def leave_vc(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
+        # Auto remove active TTS if leaving
+        if interaction.channel.id in active_tts_channels:
+            active_tts_channels.remove(interaction.channel.id)
         await interaction.response.send_message("👋 Disconnected from Voice Channel.")
     else:
         await interaction.response.send_message("❌ Bot kisi voice channel me nahi hai!", ephemeral=True)
@@ -137,35 +172,29 @@ async def vc247_toggle(interaction: discord.Interaction):
     await interaction.response.send_message("🔒 **24/7 VC Lock Activated!** Bot channel nahi chhodega.")
 
 
-# ==================== 3. TEXT-TO-SPEECH (TTS) COMMAND ====================
+# ==================== 3. LIVE TTS CHAT COMMANDS ====================
 
-@bot.tree.command(name="tts", description="Text ko voice mein bolne ke liye (Google TTS)")
-async def tts_speak(interaction: discord.Interaction, *, text: str):
+@bot.tree.command(name="tts_start", description="Chat ke messages ko live Voice Channel mein bolna shuru karein")
+async def tts_start(interaction: discord.Interaction):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ Pehle kisi Voice Channel me join karein!", ephemeral=True)
 
-    await interaction.response.defer()
+    vc = interaction.guild.voice_client
+    if not vc:
+        vc = await interaction.user.voice.channel.connect(reconnect=True, timeout=30.0)
+    elif vc.channel != interaction.user.voice.channel:
+        await vc.move_to(interaction.user.voice.channel)
 
-    try:
-        tts = gTTS(text=text, lang='hi')
-        audio_file = "tts_audio.mp3"
-        tts.save(audio_file)
+    active_tts_channels.add(interaction.channel.id)
+    await interaction.response.send_message("🟢 **Live TTS Mode Activated!** Ab aap is channel mein jo bhi likhenge, Priya usko voice mein bolegi. (/tts_stop se band karein)")
 
-        vc = interaction.guild.voice_client
-        if not vc:
-            vc = await interaction.user.voice.channel.connect(reconnect=True, timeout=30.0)
-        elif vc.channel != interaction.user.voice.channel:
-            await vc.move_to(interaction.user.voice.channel)
-
-        if vc.is_playing():
-            vc.stop()
-
-        source = discord.FFmpegPCMAudio(audio_file)
-        vc.play(source)
-
-        await interaction.followup.send(f"🗣️ **TTS Bol Rahi Hai:** `{text}`")
-    except Exception as e:
-        await interaction.followup.send(f"❌ TTS Error: `{e}`")
+@bot.tree.command(name="tts_stop", description="Live TTS mode ko is channel mein band karein")
+async def tts_stop(interaction: discord.Interaction):
+    if interaction.channel.id in active_tts_channels:
+        active_tts_channels.remove(interaction.channel.id)
+        await interaction.response.send_message("🔴 **Live TTS Mode Deactivated!** Ab chat messages voice mein nahi bole jayenge.")
+    else:
+        await interaction.response.send_message("❌ Is channel mein live TTS active nahi hai!", ephemeral=True)
 
 
 # ==================== 4. ROMANTIC & SPECIAL COMMANDS (PRIYA) ====================
@@ -178,8 +207,8 @@ async def dashboard(interaction: discord.Interaction):
         color=0xff007f
     )
     embed.add_field(name="✨ Status", value="Always Yours & Ready ❤️", inline=False)
+    embed.add_field(name="🗣️ Live Chat TTS", value="`/tts_start`, `/tts_stop`", inline=False)
     embed.add_field(name="💋 Romance Commands", value="`/kiss`, `/hug`, `/love`, `/my_bf_1`, `/my_bf_2`", inline=False)
-    embed.add_field(name="🗣️ Voice", value="`/tts <text>`", inline=False)
     embed.add_field(name="🎵 Music & VC", value="`/play`, `/join`, `/pause`, `/resume`, `/skip`, `/stop`, `/leave`, `/vc247`", inline=False)
     embed.add_field(name="💰 Economy", value="`/daily`, `/balance`", inline=False)
     embed.add_field(name="⚙️ Utility & Fun", value="`/ping`, `/avatar`, `/toss`, `/poll`, `/clear`", inline=False)
@@ -266,8 +295,8 @@ async def clear_messages(interaction: discord.Interaction, amount: int = 40):
 @bot.tree.command(name="help", description="Show all available slash commands")
 async def custom_help(interaction: discord.Interaction):
     embed = discord.Embed(title="⚡ Priya & AuraBot Command Manual", color=discord.Color.from_rgb(255, 0, 127))
+    embed.add_field(name="🗣️ Live Chat TTS", value="`/tts_start` (Enable chat reading), `/tts_stop` (Disable)", inline=False)
     embed.add_field(name="💖 Romance & Dashboard", value="`/dashboard`, `/kiss`, `/hug`, `/love`, `/my_bf_1`, `/my_bf_2`", inline=False)
-    embed.add_field(name="🗣️ Voice (TTS)", value="`/tts <text>`", inline=False)
     embed.add_field(name="🎵 Music & VC", value="`/play`, `/join`, `/pause`, `/resume`, `/skip`, `/stop`, `/leave`, `/vc247`", inline=False)
     embed.add_field(name="💰 Economy", value="`/daily`, `/balance`", inline=False)
     embed.add_field(name="⚙️ Utility & Fun", value="`/ping`, `/avatar`, `/toss`, `/poll`, `/clear`", inline=False)
