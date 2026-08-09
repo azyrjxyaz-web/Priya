@@ -6,6 +6,7 @@ from discord.ext import commands
 import yt_dlp
 import static_ffmpeg
 from gtts import gTTS
+import traceback
 
 # Automatic FFmpeg Setup
 static_ffmpeg.add_paths()
@@ -57,6 +58,7 @@ async def on_message(message):
 
     # Check if TTS is active in this channel and it's not a command
     if message.channel.id in active_tts_channels and not message.content.startswith("/"):
+        print(f"TTS Triggered for message: {message.content}")
         guild = message.guild
         if guild and guild.voice_client:
             vc = guild.voice_client
@@ -72,8 +74,12 @@ async def on_message(message):
 
                 source = discord.FFmpegPCMAudio(audio_file)
                 vc.play(source)
+                print("TTS Audio successfully played in VC!")
             except Exception as e:
-                print(f"Live TTS Error: {e}")
+                print(f"CRITICAL Live TTS Error: {e}")
+                traceback.print_exc()
+        else:
+            print("TTS Debug: Guild has no active voice_client connected!")
 
     await bot.process_commands(message)
 
@@ -105,7 +111,6 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        # Force SoundCloud search query to completely bypass YouTube errors
         if search.startswith("http://") or search.startswith("https://"):
             query = search
         else:
