@@ -19,11 +19,12 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
+# Strict SoundCloud search to completely avoid YouTube bot detection & cookie blocks
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'scsearch',  # SoundCloud search bypasses YouTube bot detection
+    'default_search': 'scsearch',
     'extract_flat': False,
     'nocheckcertificate': True,
     'ignoreerrors': False,
@@ -90,7 +91,7 @@ async def join_vc(interaction: discord.Interaction):
         await channel.connect(reconnect=True, timeout=30.0)
     await interaction.response.send_message(f"🔊 Joined **{channel.name}**!")
 
-@bot.tree.command(name="play", description="Play music by name (SoundCloud powered)")
+@bot.tree.command(name="play", description="Play music by song name (SoundCloud powered)")
 async def play_music(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ Pehle kisi Voice Channel me join karein!", ephemeral=True)
@@ -104,8 +105,11 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        # Use SoundCloud search to avoid YouTube bot verification blocks
-        query = search if search.startswith("http://") or search.startswith("https://") else f"scsearch:{search}"
+        # Force SoundCloud search query to completely bypass YouTube errors
+        if search.startswith("http://") or search.startswith("https://"):
+            query = search
+        else:
+            query = f"scsearch:{search}"
         
         loop = asyncio.get_event_loop()
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
