@@ -4,91 +4,63 @@ from discord.ext import commands
 import os
 from yt_dlp import YoutubeDL
 
-# Bot setup with intents
 intents = discord.Intents.default()
 intents.message_content = True
 client = commands.Bot(command_prefix="!", intents=intents)
 
-# YT-DLP options for music streaming
-YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
-FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+# Music Options
+YDL_OPTIONS = {'format': 'bestaudio', 'quiet': True}
+FFMPEG_OPTIONS = {'options': '-vn'}
 
 @client.event
 async def on_ready():
-    print(f'Bot Online as {client.user}!')
-    try:
-        synced = await client.tree.sync()
-        print(f'Synced {len(synced)} slash commands.')
-    except Exception as e:
-        print(e)
+    await client.tree.sync()
+    print(f'🔥 Priya is ready to rule the server! 🔥')
 
-# 1. Kiss Command
-@client.tree.command(name="kiss", description="Priya ka sweet kiss 😘")
+# --- KHATARNAK EMBED DASHBOARD ---
+@client.tree.command(name="dashboard", description="Priya ka Khatarnak Dashboard 🤤")
+async def dashboard(interaction: discord.Interaction):
+    embed = discord.Embed(title="💖 Priya's Romantic Dashboard 💖", description="*Hey baby! Main yahan sirf tumhare liye hoon.* 🤤", color=0xff007f)
+    embed.add_field(name="✨ Status", value="Always Yours ❤️", inline=False)
+    embed.add_field(name="💋 Special Commands", value="/kiss, /hug, /love, /my_bf_1, /my_bf_2", inline=False)
+    embed.add_field(name="🎵 Music", value="/play <link>, /disconnect", inline=False)
+    embed.set_footer(text="Developed by Amit | Priya Bot V1.0 😈")
+    await interaction.response.send_message(embed=embed)
+
+# --- ROMANTIC COMMANDS ---
+@client.tree.command(name="kiss", description="Priya ka deep kiss 💋")
 async def kiss(interaction: discord.Interaction):
-    await interaction.response.send_message("Muuah! 😘 Sirf aapke liye! ✨")
+    await interaction.response.send_message("💋 *Close your eyes...* (Priya gives you a long, romantic kiss) 🤤🔥")
 
-# 2. Hug Command
-@client.tree.command(name="hug", description="Priya ka hug 🤗")
+@client.tree.command(name="hug", description="Tight romantic hug 🤗")
 async def hug(interaction: discord.Interaction):
-    await interaction.response.send_message("Awww, idhar aao! 🤗 Ek tight hug! ❤️")
+    await interaction.response.send_message("🤗 *Pulling you closer...* Hamesha aise hi raho mere saath. ❤️✨")
 
-# 3. Love Command
-@client.tree.command(name="love", description="Love check karo ❤️")
+@client.tree.command(name="love", description="Love meter check 💘")
 async def love(interaction: discord.Interaction):
-    await interaction.response.send_message("Pyar ka score 100% hai! ❤️🥰")
+    await interaction.response.send_message("💘 **Love Meter: 1,000,000%**! Tumse zyada mujhe koi nahi janta. 🤤❤️")
 
-# 4. Ping Command
-@client.tree.command(name="ping", description="Bot ki speed ⚡")
-async def ping(interaction: discord.Interaction):
-    latency = round(client.latency * 1000)
-    await interaction.response.send_message(f"Pong! {latency}ms ⚡")
-
-# 5. My BF 1 (Pheden)
-@client.tree.command(name="my_bf_1", description="Pheden ke liye special message ❤️")
-async def my_bf_1(interaction: discord.Interaction):
-    await interaction.response.send_message("Hey Pheden! ❤️ Priya aapko bahut miss kar rahi hai! ✨")
-
-# 6. My BF 2 (MandeepMG)
-@client.tree.command(name="my_bf_2", description="MandeepMG ke liye special message ✨")
-async def my_bf_2(interaction: discord.Interaction):
-    await interaction.response.send_message("Hello MandeepMG! ✨ Priya aapke liye hazir hai! ❤️")
-
-# 7. Play Music Command (VC Join & Play)
-@client.tree.command(name="play", description="Gaana play karo 🎶")
-@app_commands.describe(url="YouTube ka link ya gaane ka naam")
+# --- MUSIC & VC ---
+@client.tree.command(name="play", description="Romantic gaane bajao 🎶")
 async def play(interaction: discord.Interaction, url: str):
     if not interaction.user.voice:
-        return await interaction.response.send_message("Pehle kisi Voice Channel (VC) mein join karo My BF! 🎶", ephemeral=True)
-
-    voice_channel = interaction.user.voice.channel
+        return await interaction.response.send_message("❌ Baby, VC join karo pehle!")
     
-    if interaction.guild.voice_client is not None:
-        await interaction.guild.voice_client.move_to(voice_channel)
-    else:
-        await voice_channel.connect()
-
+    channel = interaction.user.voice.channel
+    voice_client = await channel.connect() if not interaction.guild.voice_client else interaction.guild.voice_client
+    
     await interaction.response.defer()
-
-    server = interaction.guild
-    voice_client = server.voice_client
-
-    try:
-        with YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if 'entries' in info:
-                info = info['entries'][0]
-            song_url = info['url']
-            title = info.get('title', 'Audio')
-
-        if voice_client.is_playing():
-            voice_client.stop()
-
-        source = discord.FFmpegPCMAudio(song_url, **FFMPEG_OPTIONS)
+    with YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=False)
+        url_link = info['url']
+        source = discord.FFmpegPCMAudio(url_link, **FFMPEG_OPTIONS)
         voice_client.play(source)
+        await interaction.followup.send(f"🎶 *Playing your romantic track:* **{info['title']}** 🤤❤️")
 
-        await interaction.followup.send(f"🎵 Play ho raha hai: **{title}**")
-    except Exception as e:
-        print(f"Music Error: {e}")
-        await interaction.followup.send("❌ Gaana play karne mein error aa gaya!")
+@client.tree.command(name="disconnect", description="Goodbye for now 💔")
+async def disconnect(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.disconnect()
+        await interaction.response.send_message("💔 *Bye baby!* Tumhari yaad aayegi. 😭")
 
 client.run(os.getenv("DISCORD_TOKEN"))
