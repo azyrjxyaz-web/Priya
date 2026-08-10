@@ -331,12 +331,10 @@ if __name__ == "__main__":
     if not DISCORD_TOKEN:
         print("ERROR: DISCORD_TOKEN environment variable is missing!")
     else:
-        # Start Flask in a separate thread so Render/Railway web health-checks pass
         flask_thread = threading.Thread(target=run_web)
         flask_thread.daemon = True
         flask_thread.start()
         
-        # Run Discord Bot
         try:
             bot.run(DISCORD_TOKEN)
         except Exception as e:
