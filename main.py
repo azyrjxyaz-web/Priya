@@ -1,15 +1,27 @@
 import os
 import asyncio
 import random
+import threading
+from flask import Flask
 import discord
 from discord.ext import commands
 import yt_dlp
 import static_ffmpeg
 from gtts import gTTS
-import traceback
 
 # Automatic FFmpeg Setup
 static_ffmpeg.add_paths()
+
+# ==================== WEB SERVER FOR RENDER/RAILWAY ====================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Priya Bot is alive and running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 # ==================== 1. BOT CONFIGURATION ====================
 intents = discord.Intents.all()
@@ -20,7 +32,6 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
-# Strict SoundCloud search to completely avoid YouTube bot detection & cookie blocks
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -35,8 +46,6 @@ YTDL_OPTIONS = {
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 user_balances = {}
-
-# Active TTS channels tracker
 active_tts_channels = set()
 
 @bot.event
@@ -56,30 +65,31 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Check if TTS is active in this channel and it's not a command
     if message.channel.id in active_tts_channels and not message.content.startswith("/"):
-        print(f"TTS Triggered for message: {message.content}")
         guild = message.guild
         if guild and guild.voice_client:
             vc = guild.voice_client
             try:
-                # Generate Google TTS audio file
                 tts = gTTS(text=message.content, lang='hi')
-                audio_file = "chat_tts.mp3"
+                audio_file = f"tts_{message.id}.mp3"
                 tts.save(audio_file)
 
-                # Stop any playing music immediately before speaking TTS
-                if vc.is_playing() or vc.is_paused():
+                if vc.is_playing():
                     vc.stop()
 
+                def after_playing(error):
+                    if os.path.exists(audio_file):
+                        try:
+                            os.remove(audio_file)
+                        except:
+                            pass
+                    if error:
+                        print(f"TTS Player error: {error}")
+
                 source = discord.FFmpegPCMAudio(audio_file)
-                vc.play(source)
-                print("TTS Audio successfully played in VC!")
+                vc.play(source, after=after_playing)
             except Exception as e:
-                print(f"CRITICAL Live TTS Error: {e}")
-                traceback.print_exc()
-        else:
-            print("TTS Debug: Guild has no active voice_client connected!")
+                print(f"Live TTS Error: {e}")
 
     await bot.process_commands(message)
 
@@ -111,10 +121,7 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        if search.startswith("http://") or search.startswith("https://"):
-            query = search
-        else:
-            query = f"scsearch:{search}"
+        query = search if search.startswith("http://") or search.startswith("https://") else f"scsearch:{search}"
         
         loop = asyncio.get_event_loop()
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
@@ -318,13 +325,19 @@ async def custom_help(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# ==================== 7. START BOT ====================
+# ==================== 7. START SERVER & BOT ====================
 if __name__ == "__main__":
     DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
-    if DISCORD_TOKEN:
+    if not DISCORD_TOKEN:
+        print("ERROR: DISCORD_TOKEN environment variable is missing!")
+    else:
+        # Start Flask in a separate thread so Render/Railway web health-checks pass
+        flask_thread = threading.Thread(target=run_web)
+        flask_thread.daemon = True
+        flask_thread.start()
+        
+        # Run Discord Bot
         try:
             bot.run(DISCORD_TOKEN)
         except Exception as e:
             print(f"Bot start error: {e}")
-    else:
-        print("ERROR: DISCORD_TOKEN environment variable is missing!")
