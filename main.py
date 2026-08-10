@@ -28,8 +28,8 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1000000 -analyzeduration 0',
+    'options': '-vn -ac 2 -ar 48000 -b:a 64k'
 }
 
 YTDL_OPTIONS = {
@@ -56,7 +56,7 @@ async def on_ready():
         print(f"Synced {len(synced)} slash commands.")
     except Exception as e:
         print(f"Sync error: {e}")
-    await bot.change_presence(activity=discord.Game(name="/help | Priya & Forest Vibes 🍄✨"))
+    await bot.change_presence(activity=discord.Game(name="/help | Forest Vibes 🍄✨"))
 
 
 # ==================== LIVE CHAT TTS LISTENER ====================
@@ -107,7 +107,7 @@ async def join_vc(interaction: discord.Interaction):
         await channel.connect(reconnect=True, timeout=30.0)
     await interaction.response.send_message(f"🔊 Joined **{channel.name}**!")
 
-@bot.tree.command(name="play", description="Play music by song name (SoundCloud powered)")
+@bot.tree.command(name="play", description="Play music from YouTube or SoundCloud")
 async def play_music(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ Pehle kisi Voice Channel me join karein!", ephemeral=True)
@@ -121,20 +121,18 @@ async def play_music(interaction: discord.Interaction, search: str):
         await vc.move_to(interaction.user.voice.channel)
 
     try:
-        query = search if search.startswith("http://") or search.startswith("https://") else f"scsearch:{search}"
+        query = search if (search.startswith("http://") or search.startswith("https://")) else f"scsearch:{search}"
         
         loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
+        info = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
         
-        if 'entries' in data and len(data['entries']) > 0:
-            info = data['entries'][0]
-        else:
-            info = data
+        if 'entries' in info and len(info['entries']) > 0:
+            info = info['entries'][0]
 
-        url = info.get('url')
+        url = info['url']
         title = info.get('title', 'Audio Stream')
 
-        if vc.is_playing() or vc.is_paused():
+        if vc.is_playing():
             vc.stop()
 
         source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
@@ -325,12 +323,13 @@ async def custom_help(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# ==================== 7. START SERVER & BOT ====================
+# ==================== 7. START WEB SERVER & BOT ====================
 if __name__ == "__main__":
     DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
     if not DISCORD_TOKEN:
         print("ERROR: DISCORD_TOKEN environment variable is missing!")
     else:
+        # Background mein Flask server start karega taki Render port bind error na de
         flask_thread = threading.Thread(target=run_web)
         flask_thread.daemon = True
         flask_thread.start()
